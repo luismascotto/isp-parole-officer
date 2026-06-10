@@ -1,0 +1,49 @@
+# isp-parole-officer
+
+A small Go utility that monitors ISP connectivity by probing a list of hosts over TCP (port 443). It logs latency, retries on failure, and can optionally track public IP changes.
+
+## Requirements
+
+- Go 1.22+
+
+## Build & run
+
+```bash
+go build
+./isp-parole-officer
+```
+
+On Windows, use the included scripts:
+
+- `build.bat` — compile the binary
+- `run.bat` — build and start the monitor
+
+## Configuration
+
+Create a `config.json` in the project directory:
+
+```json
+{
+  "hosts": ["1.1.1.1", "8.8.8.8", "cloudflare.com"],
+  "dns_servers": [],
+  "interval_seconds": 60,
+  "round_timeout_seconds": 10,
+  "retry_interval_seconds": 5,
+  "ip_check_interval_seconds": 300,
+  "ip_check_url": "https://api.ipify.org"
+}
+```
+
+| Field | Description |
+|---|---|
+| `hosts` | Hostnames or IPs to probe (majority must succeed per round) |
+| `dns_servers` | Optional custom DNS resolvers; empty uses system default |
+| `interval_seconds` | Delay between successful rounds |
+| `round_timeout_seconds` | Per-round and per-host timeout |
+| `retry_interval_seconds` | Delay after a failed round |
+| `ip_check_interval_seconds` | Public IP check interval; `0` disables |
+| `ip_check_url` | HTTP endpoint that returns your public IP |
+
+## Output
+
+Logs are printed to the console and written hourly under `Results/<session-id>/`. Press Ctrl+C to stop gracefully.
