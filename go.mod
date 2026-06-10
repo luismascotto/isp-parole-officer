@@ -1,4 +1,4 @@
-module paronline-officer
+module isp-parole-officer
 
 go 1.22
 

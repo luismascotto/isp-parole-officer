@@ -1,0 +1,5 @@
+paronline-officer
+*.exe
+*.json
+Results/
+*.zip

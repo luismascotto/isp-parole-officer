@@ -2,7 +2,7 @@
 
 cd /d %~dp0
 
-echo Building paronline-officer...
+echo Building isp-parole-officer...
 go build
 
 if errorlevel 1 (
@@ -10,4 +10,4 @@ if errorlevel 1 (
     exit /b 1
 )
 
-paronline-officer.exe config.json &
+isp-parole-officer.exe config.json &

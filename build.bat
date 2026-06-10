@@ -2,7 +2,7 @@
 
 cd /d %~dp0
 
-echo Building paronline-officer...
+echo Building isp-parole-officer...
 go build
 
 if errorlevel 1 (
