@@ -1,0 +1,15 @@
+{
+  "hosts": [
+    "www.google.com",
+    "www.amazon.com",
+    "www.microsoft.com"
+  ],
+  "dns_servers": [
+    "8.8.8.8",
+    "1.1.1.1"
+  ],
+  "interval_seconds": 10,
+  "round_timeout_seconds": 5,
+  "retry_interval_seconds": 2,
+  "ip_check_interval_seconds": 60
+}
