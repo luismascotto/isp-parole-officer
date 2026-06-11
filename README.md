@@ -47,3 +47,4 @@ Create a `config.json` in the project directory:
 ## Output
 
 Logs are printed to the console and written hourly under `Results/<session-id>/`. Press Ctrl+C to stop gracefully.
+
