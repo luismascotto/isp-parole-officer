@@ -3,18 +3,20 @@ package main
 import (
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
 
 type Config struct {
-	Hosts                  []string `json:"hosts"`
-	DNSServers             []string `json:"dns_servers"`
-	IntervalSeconds        int      `json:"interval_seconds"`
-	RoundTimeoutSeconds    int      `json:"round_timeout_seconds"`
-	RetryIntervalSeconds   int      `json:"retry_interval_seconds"`
-	IPCheckIntervalSeconds int      `json:"ip_check_interval_seconds"`
-	IPCheckURL             string   `json:"ip_check_url"`
+	Hosts              []string      `json:"hosts"`
+	DNSServers         []string      `json:"dns_servers"`
+	RoundInterval      time.Duration `json:"round_interval_seconds"`
+	RoundTimeout       time.Duration `json:"round_timeout_seconds"`
+	RoundRetryInterval time.Duration `json:"round_retry_interval_seconds"`
+	IPCheckInterval    time.Duration `json:"ip_check_interval_seconds"`
+	IPCheckTimeout     time.Duration `json:"ip_check_timeout_seconds"`
+	IPCheckURL         string        `json:"ip_check_url"`
 }
 
 type HostCache struct {
@@ -24,10 +26,10 @@ type HostCache struct {
 
 type HourlyLogger struct {
 	outputDir string
-	//sessionID string
-	mu      sync.Mutex
-	file    *os.File
-	hourKey string
+	mu        sync.Mutex
+	file      *os.File
+	currHour  int
+	strb      strings.Builder
 }
 
 type Session struct {

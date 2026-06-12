@@ -8,8 +8,10 @@
     "8.8.8.8",
     "1.1.1.1"
   ],
-  "interval_seconds": 10,
-  "round_timeout_seconds": 5,
-  "retry_interval_seconds": 2,
-  "ip_check_interval_seconds": 60
+  "round_interval_seconds": 15,
+  "round_timeout_seconds": 3,
+  "round_retry_interval_seconds": 5,
+  "ip_check_interval_seconds": 120,
+  "ip_check_timeout_seconds": 10,
+  "ip_check_url": "https://api.ipify.org"
 }

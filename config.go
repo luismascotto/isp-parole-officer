@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 func loadConfig(path string) (Config, error) {
@@ -28,41 +30,53 @@ func validateConfig(cfg Config) error {
 			return fmt.Errorf("hosts must not contain empty entries")
 		}
 	}
-	if cfg.IntervalSeconds <= 0 {
+	if cfg.RoundInterval <= 0 {
 		return fmt.Errorf("interval_seconds must be > 0")
 	}
-	if cfg.RoundTimeoutSeconds <= 0 {
+	if cfg.RoundTimeout <= 0 {
 		return fmt.Errorf("round_timeout_seconds must be > 0")
 	}
-	if cfg.RetryIntervalSeconds <= 0 {
+	if cfg.RoundRetryInterval <= 0 {
 		return fmt.Errorf("retry_interval_seconds must be > 0")
 	}
-	if cfg.IPCheckIntervalSeconds < 0 {
+	if cfg.IPCheckInterval < 0 {
 		return fmt.Errorf("ip_check_interval_seconds must be >= 0")
+	}
+	if cfg.IPCheckInterval > 0 && cfg.IPCheckTimeout <= 0 {
+		return fmt.Errorf("ip_check_timeout_seconds must be > 0 when ip_check_interval_seconds is > 0")
 	}
 	return nil
 }
 
-func formatStartLine(cfg Config) string {
-	dns := "system default"
+func formatConfig(cfg Config) string {
+	var strb strings.Builder
+	strb.WriteString("\t[HOSTS] ")
+	strb.WriteString(strings.Join(cfg.Hosts, "  "))
+	strb.WriteString("\n\t[DNS] ")
 	if len(cfg.DNSServers) > 0 {
-		dns = strings.Join(cfg.DNSServers, " ")
+		strb.WriteString(strings.Join(cfg.DNSServers, "  "))
+	} else {
+		strb.WriteString("system default")
 	}
-	ipCheck := "off"
-	if cfg.IPCheckIntervalSeconds > 0 {
-		url := cfg.IPCheckURL
-		if url == "" {
-			url = defaultIPCheckURL
-		}
-		ipCheck = fmt.Sprintf("%ds via %s", cfg.IPCheckIntervalSeconds, url)
+
+	strb.WriteString("\n\t[ROUND] interval ")
+	strb.WriteString(strconv.Itoa(int(cfg.RoundInterval / time.Second)))
+	strb.WriteString("s, timeout ")
+	strb.WriteString(strconv.Itoa(int(cfg.RoundTimeout / time.Second)))
+	strb.WriteString("s, retry ")
+	strb.WriteString(strconv.Itoa(int(cfg.RoundRetryInterval / time.Second)))
+	strb.WriteString("s")
+
+	strb.WriteString("\n\t[IP CHECK] ")
+	if cfg.IPCheckInterval > 0 {
+		strb.WriteString("interval ")
+		strb.WriteString(strconv.Itoa(int(cfg.IPCheckInterval / time.Second)))
+		strb.WriteString("s, timeout ")
+		strb.WriteString(strconv.Itoa(int(cfg.IPCheckTimeout / time.Second)))
+		strb.WriteString("s, URL ")
+		strb.WriteString(cfg.IPCheckURL)
+	} else {
+		strb.WriteString("off")
 	}
-	return fmt.Sprintf(
-		"[START] hosts: %s  dns: %s  interval: %ds  round_timeout: %ds  retry: %ds  ip_check: %s",
-		strings.Join(cfg.Hosts, " "),
-		dns,
-		cfg.IntervalSeconds,
-		cfg.RoundTimeoutSeconds,
-		cfg.RetryIntervalSeconds,
-		ipCheck,
-	)
+	return strb.String()
 }

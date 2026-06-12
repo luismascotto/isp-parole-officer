@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,11 +20,13 @@ import (
 )
 
 const (
-	tcpProbePort       = "443"
-	maxConsecutiveIP   = 5
-	resultsDirName     = "Results"
-	defaultIPCheckURL  = "https://api.ipify.org"
-	maxIPCheckResponse = 64
+	tcpProbePort         = "443"
+	maxConsecutiveIP     = 3
+	resultsDirName       = "Results"
+	resultFileNameFormat = "2006-01-02_15"
+	resultFileExtension  = ".txt"
+	defaultIPCheckURL    = "https://api.ipify.org"
+	maxIPCheckResponse   = 64
 )
 
 func main() {
@@ -36,6 +39,14 @@ func main() {
 	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		os.Exit(1)
+	}
+	cfg.RoundInterval *= time.Second
+	cfg.RoundTimeout *= time.Second
+	cfg.RoundRetryInterval *= time.Second
+	cfg.IPCheckInterval *= time.Second
+	cfg.IPCheckTimeout *= time.Second
+	if cfg.IPCheckURL == "" {
+		cfg.IPCheckURL = defaultIPCheckURL
 	}
 
 	uuidV7, err := uuid.NewV7()
@@ -57,7 +68,7 @@ func main() {
 		caches:    make(map[string]*HostCache, len(cfg.Hosts)),
 		logger:    logger,
 		httpClient: &http.Client{
-			Timeout: time.Duration(cfg.RoundTimeoutSeconds) * time.Second,
+			Timeout: cfg.RoundTimeout,
 		},
 	}
 
@@ -66,24 +77,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	s.logger.logLine(formatStartLine(cfg))
+	s.logger.LogLine("[START]\n" + formatConfig(cfg))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	var background sync.WaitGroup
-	if cfg.IPCheckIntervalSeconds > 0 {
-		background.Add(1)
-		go func() {
-			defer background.Done()
+	if cfg.IPCheckInterval > 0 {
+		background.Go(func() {
 			s.runIPChecker(ctx)
-		}()
+		})
+		// background.Add(1)
+		// go func() {
+		// 	defer background.Done()
+		// 	s.runIPChecker(ctx)
+		// }()
 	}
 
 	monitorDone := make(chan struct{})
 	go func() {
 		defer close(monitorDone)
-		if !sleepOrStop(ctx, time.Duration(cfg.IntervalSeconds)*time.Second) {
+		if !sleepOrStop(ctx, cfg.RoundInterval) {
 			return
 		}
 		for {
@@ -95,7 +109,7 @@ func main() {
 				return
 			}
 			s.applyCacheAfterRound(outcome)
-			s.logger.logLine(outcome.detail)
+			s.logger.LogLine(outcome.detail)
 			if !sleepOrStop(ctx, outcome.waitNext) {
 				return
 			}
@@ -105,30 +119,50 @@ func main() {
 	<-ctx.Done()
 	stop()
 
-	select {
-	case <-monitorDone:
-	case <-time.After(time.Duration(cfg.RoundTimeoutSeconds)*time.Second + 2*time.Second):
-	}
+	WaitAny(monitorDone, cfg.RoundTimeout+2*time.Second)
+	// select {
+	// case <-monitorDone:
+	// case <-time.After(time.Duration(cfg.RoundTimeoutSeconds)*time.Second + 2*time.Second):
+	// }
 
-	waitBackground := make(chan struct{})
+	WaitGroupUpTo(&background, 2*time.Second)
+	// waitBackground := make(chan struct{})
+	// go func() {
+	// 	background.Wait()
+	// 	close(waitBackground)
+	// }()
+	// select {
+	// case <-waitBackground:
+	// case <-time.After(2 * time.Second):
+	// }
+
+	s.logger.LogLine("[STOP]")
+}
+
+func WaitGroupUpTo(wg *sync.WaitGroup, timeout time.Duration) {
+	wgDoneCh := make(chan struct{})
 	go func() {
-		background.Wait()
-		close(waitBackground)
+		wg.Wait()
+		close(wgDoneCh)
 	}()
 	select {
-	case <-waitBackground:
-	case <-time.After(2 * time.Second):
+	case <-wgDoneCh:
+	case <-time.After(timeout):
 	}
+}
 
-	s.logger.logLine("[STOP]")
+func WaitAny(wgDoneCh chan struct{}, timeout time.Duration) {
+	select {
+	case <-wgDoneCh:
+	case <-time.After(timeout):
+	}
 }
 
 func (s *Session) preflight() error {
-	timeout := time.Duration(s.config.RoundTimeoutSeconds) * time.Second
 	for _, host := range s.config.Hosts {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(context.Background(), s.config.RoundTimeout)
+		defer cancel()
 		_, _, _, err := s.probeHost(ctx, host, false)
-		cancel()
 		if err != nil {
 			return fmt.Errorf("preflight failed for %s: %w", host, err)
 		}
@@ -138,7 +172,7 @@ func (s *Session) preflight() error {
 
 func (s *Session) runRound(parent context.Context) ProbeOutcome {
 	required := max(1, (len(s.config.Hosts)+1)/2)
-	roundTimeout := time.Duration(s.config.RoundTimeoutSeconds) * time.Second
+	//roundTimeout := time.Duration(s.config.RoundTimeout) * time.Second
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
@@ -155,10 +189,8 @@ func (s *Session) runRound(parent context.Context) ProbeOutcome {
 	var workers sync.WaitGroup
 
 	launchWorker := func(host string) {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			hostCtx, hostCancel := context.WithTimeout(ctx, roundTimeout)
+		workers.Go(func() {
+			hostCtx, hostCancel := context.WithTimeout(ctx, s.config.RoundTimeout)
 			defer hostCancel()
 
 			latency, ip, usedCachedIP, err := s.probeHost(hostCtx, host, true)
@@ -180,7 +212,7 @@ func (s *Session) runRound(parent context.Context) ProbeOutcome {
 				err:          err,
 			}:
 			}
-		}()
+		})
 	}
 
 	for _, host := range s.config.Hosts {
@@ -193,24 +225,25 @@ func (s *Session) runRound(parent context.Context) ProbeOutcome {
 	var roundErr error
 	stopped := false
 
-	waitWorkers := func() {
-		done := make(chan struct{})
-		go func() {
-			workers.Wait()
-			close(done)
-		}()
-		select {
-		case <-done:
-		case <-time.After(roundTimeout + time.Second):
-		}
-	}
+	// waitWorkers := func() {
+	// 	done := make(chan struct{})
+	// 	go func() {
+	// 		workers.Wait()
+	// 		close(done)
+	// 	}()
+	// 	select {
+	// 	case <-done:
+	// 	case <-time.After(roundTimeout + time.Second):
+	// 	}
+	// }
 
 collect:
 	for received := 0; received < len(s.config.Hosts); received++ {
 		select {
 		case <-parent.Done():
 			cancel()
-			waitWorkers()
+			WaitGroupUpTo(&workers, s.config.RoundTimeout+time.Second)
+			// waitWorkers()
 			stopped = true
 			break collect
 		case res := <-results:
@@ -246,16 +279,12 @@ collect:
 			kind:     ProbeOutcomeKindError,
 			err:      roundErr,
 			detail:   "[ERROR] " + describeError(roundErr),
-			waitNext: time.Duration(s.config.RetryIntervalSeconds) * time.Second,
+			waitNext: s.config.RoundRetryInterval,
 		}
 	}
 
 	avg := averageLatencyMs(successes)
-	detail := fmt.Sprintf(
-		"[SUCCESS] %dms (%s)",
-		avg,
-		formatHostLatencies(s.config.Hosts, successes),
-	)
+	detail := "[SUCCESS] " + strconv.FormatInt(avg, 10) + "ms (" + formatHostLatencies(s.config.Hosts, successes) + ")"
 
 	return ProbeOutcome{
 		kind:         ProbeOutcomeKindSuccess,
@@ -264,7 +293,7 @@ collect:
 		usedCachedIP: usedCachedIP,
 		avgMs:        avg,
 		detail:       detail,
-		waitNext:     time.Duration(s.config.IntervalSeconds) * time.Second,
+		waitNext:     s.config.RoundInterval,
 	}
 }
 
@@ -274,30 +303,44 @@ func (s *Session) probeHost(ctx context.Context, host string, useCache bool) (ti
 	start := time.Now()
 	conn, err := dialTCP(ctx, target)
 	if err != nil {
-		if usedCachedIP {
-			resolved, resolveErr := s.resolve(ctx, host)
-			if resolveErr != nil {
-				return 0, "", false, resolveErr
-			}
-			conn, err = dialTCP(ctx, resolved)
-			if err != nil {
-				return 0, "", false, err
-			}
-			target = resolved
-			usedCachedIP = false
-		} else if net.ParseIP(target) == nil {
-			resolved, resolveErr := s.resolve(ctx, host)
-			if resolveErr != nil {
-				return 0, "", false, resolveErr
-			}
-			conn, err = dialTCP(ctx, resolved)
-			if err != nil {
-				return 0, "", false, err
-			}
-			target = resolved
-		} else {
-			return 0, "", usedCachedIP, err
+		if !usedCachedIP && net.ParseIP(target) != nil {
+			return 0, "", false, err
 		}
+		resolved, resolveErr := s.resolve(ctx, host)
+		if resolveErr != nil {
+			return 0, "", false, resolveErr
+		}
+		conn, err = dialTCP(ctx, resolved)
+		if err != nil {
+			return 0, "", false, err
+		}
+		target = resolved
+		usedCachedIP = false
+
+		// if usedCachedIP {
+		// 	resolved, resolveErr := s.resolve(ctx, host)
+		// 	if resolveErr != nil {
+		// 		return 0, "", false, resolveErr
+		// 	}
+		// 	conn, err = dialTCP(ctx, resolved)
+		// 	if err != nil {
+		// 		return 0, "", false, err
+		// 	}
+		// 	target = resolved
+		// 	usedCachedIP = false
+		// } else if net.ParseIP(target) == nil {
+		// 	resolved, resolveErr := s.resolve(ctx, host)
+		// 	if resolveErr != nil {
+		// 		return 0, "", false, resolveErr
+		// 	}
+		// 	conn, err = dialTCP(ctx, resolved)
+		// 	if err != nil {
+		// 		return 0, "", false, err
+		// 	}
+		// 	target = resolved
+		// } else {
+		// 	return 0, "", usedCachedIP, err
+		// }
 	}
 	_ = conn.Close()
 	return time.Since(start), target, usedCachedIP, nil
@@ -419,7 +462,7 @@ func formatHostLatencies(hosts []string, successes map[string]time.Duration) str
 
 	parts := make([]string, 0, len(hostLatencies))
 	for _, hostLatency := range hostLatencies {
-		parts = append(parts, fmt.Sprintf("%s:%dms", hostLatency.host, hostLatency.latency.Milliseconds()))
+		parts = append(parts, hostLatency.host+":"+strconv.FormatInt(hostLatency.latency.Milliseconds(), 10)+"ms")
 	}
 
 	for _, host := range hosts {
@@ -472,40 +515,34 @@ func sleepOrStop(ctx context.Context, d time.Duration) bool {
 }
 
 func (s *Session) runIPChecker(ctx context.Context) {
-	interval := time.Duration(s.config.IPCheckIntervalSeconds) * time.Second
-	url := s.config.IPCheckURL
-	if url == "" {
-		url = defaultIPCheckURL
-	}
-
 	var lastIP string
-	check := func() {
+	checkIP := func() {
 		if ctx.Err() != nil {
 			return
 		}
-		checkCtx, cancel := context.WithTimeout(ctx, time.Duration(s.config.RoundTimeoutSeconds)*time.Second)
+		checkCtx, cancel := context.WithTimeout(ctx, s.config.IPCheckTimeout)
 		defer cancel()
 
-		ip, err := s.fetchPublicIP(checkCtx, url)
+		ip, err := s.fetchPublicIP(checkCtx, s.config.IPCheckURL)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
 			}
-			s.logger.logLine("[IP] ERROR " + err.Error())
+			s.logger.LogLine("[IP] ERROR " + err.Error())
 			return
 		}
 
 		if lastIP != "" && ip != lastIP {
-			s.logger.logLine(fmt.Sprintf("[IP] changed %s -> %s", lastIP, ip))
+			s.logger.LogLine("[IP] changed " + lastIP + " -> " + ip)
 		} else {
-			s.logger.logLine("[IP] " + ip)
+			s.logger.LogLine("[IP] " + ip)
 		}
 		lastIP = ip
 	}
 
-	check()
+	checkIP()
 
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(s.config.IPCheckInterval)
 	defer ticker.Stop()
 
 	for {
@@ -513,7 +550,7 @@ func (s *Session) runIPChecker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			check()
+			checkIP()
 		}
 	}
 }
