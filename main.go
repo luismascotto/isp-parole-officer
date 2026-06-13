@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +16,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	_ "net/http/pprof"
 
 	"github.com/google/uuid"
 )
@@ -30,23 +33,28 @@ const (
 )
 
 func main() {
-	cfg, err := loadConfig("config.json")
+	// Start an internal port exclusively for profiling and health checks
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
+	config, err := loadConfig("config.json")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := validateConfig(cfg); err != nil {
+	if err := validateConfig(config); err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		os.Exit(1)
 	}
-	cfg.RoundInterval *= time.Second
-	cfg.RoundTimeout *= time.Second
-	cfg.RoundRetryInterval *= time.Second
-	cfg.IPCheckInterval *= time.Second
-	cfg.IPCheckTimeout *= time.Second
-	if cfg.IPCheckURL == "" {
-		cfg.IPCheckURL = defaultIPCheckURL
+	config.RoundInterval *= time.Second
+	config.RoundTimeout *= time.Second
+	config.RoundRetryInterval *= time.Second
+	config.IPCheckInterval *= time.Second
+	config.IPCheckTimeout *= time.Second
+	if config.IPCheckURL == "" {
+		config.IPCheckURL = defaultIPCheckURL
 	}
 
 	uuidV7, err := uuid.NewV7()
@@ -64,11 +72,11 @@ func main() {
 
 	s := &Session{
 		sessionID: sessionID,
-		config:    cfg,
-		caches:    make(map[string]*HostCache, len(cfg.Hosts)),
+		config:    config,
+		caches:    make(map[string]*HostCache, len(config.Hosts)),
 		logger:    logger,
 		httpClient: &http.Client{
-			Timeout: cfg.RoundTimeout,
+			Timeout: config.RoundTimeout,
 		},
 	}
 
@@ -77,13 +85,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	s.logger.LogLine("[START]\n" + formatConfig(cfg))
+	s.logger.LogLine("[START]\n" + formatConfig(config))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	var background sync.WaitGroup
-	if cfg.IPCheckInterval > 0 {
+	if config.IPCheckInterval > 0 {
 		background.Go(func() {
 			s.runIPChecker(ctx)
 		})
@@ -97,7 +105,7 @@ func main() {
 	monitorDone := make(chan struct{})
 	go func() {
 		defer close(monitorDone)
-		if !sleepOrStop(ctx, cfg.RoundInterval) {
+		if !sleepOrStop(ctx, config.RoundInterval) {
 			return
 		}
 		for {
@@ -119,7 +127,7 @@ func main() {
 	<-ctx.Done()
 	stop()
 
-	WaitAny(monitorDone, cfg.RoundTimeout+2*time.Second)
+	WaitAny(monitorDone, config.RoundTimeout+2*time.Second)
 	// select {
 	// case <-monitorDone:
 	// case <-time.After(time.Duration(cfg.RoundTimeoutSeconds)*time.Second + 2*time.Second):
@@ -306,7 +314,7 @@ func (s *Session) probeHost(ctx context.Context, host string, useCache bool) (ti
 		if !usedCachedIP && net.ParseIP(target) != nil {
 			return 0, "", false, err
 		}
-		resolved, resolveErr := s.resolve(ctx, host)
+		resolved, resolveErr := resolve(ctx, host, s.config.DNSServers)
 		if resolveErr != nil {
 			return 0, "", false, resolveErr
 		}
@@ -359,54 +367,6 @@ func (s *Session) targetForHost(host string, useCache bool) (target string, used
 		return entry.ip, true
 	}
 	return host, false
-}
-
-func (s *Session) resolve(ctx context.Context, host string) (string, error) {
-	if ip := net.ParseIP(host); ip != nil {
-		return host, nil
-	}
-
-	if len(s.config.DNSServers) == 0 {
-		resolver := &net.Resolver{PreferGo: true}
-		ips, err := resolver.LookupIPAddr(ctx, host)
-		if err != nil {
-			return "", fmt.Errorf("couldn't resolve name %s: %w", host, err)
-		}
-		if len(ips) == 0 {
-			return "", fmt.Errorf("couldn't resolve name %s", host)
-		}
-		return ips[0].IP.String(), nil
-	}
-
-	var lastErr error
-	for _, server := range s.config.DNSServers {
-		resolver := &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{}
-				return d.DialContext(ctx, "udp", net.JoinHostPort(server, "53"))
-			},
-		}
-		ips, err := resolver.LookupIPAddr(ctx, host)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if len(ips) == 0 {
-			lastErr = fmt.Errorf("no records")
-			continue
-		}
-		return ips[0].IP.String(), nil
-	}
-	if lastErr != nil {
-		return "", fmt.Errorf("couldn't resolve name %s: %w", host, lastErr)
-	}
-	return "", fmt.Errorf("couldn't resolve name %s", host)
-}
-
-func dialTCP(ctx context.Context, host string) (net.Conn, error) {
-	var d net.Dialer
-	return d.DialContext(ctx, "tcp", net.JoinHostPort(host, tcpProbePort))
 }
 
 func (s *Session) applyCacheAfterRound(outcome ProbeOutcome) {

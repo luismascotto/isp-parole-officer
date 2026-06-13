@@ -7,7 +7,9 @@ go build
 
 if errorlevel 1 (
     echo Failed to build..
+    pause
     exit /b 1
 )
 
-isp-parole-officer.exe config.json &
+start "" "isp-parole-officer.exe"
+exit

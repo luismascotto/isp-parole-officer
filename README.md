@@ -4,7 +4,7 @@ A small Go utility that monitors ISP connectivity by probing a list of hosts ove
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.25+
 
 ## Build & run
 
@@ -26,10 +26,11 @@ Create a `config.json` in the project directory:
 {
   "hosts": ["1.1.1.1", "8.8.8.8", "cloudflare.com"],
   "dns_servers": [],
-  "interval_seconds": 60,
-  "round_timeout_seconds": 10,
-  "retry_interval_seconds": 5,
-  "ip_check_interval_seconds": 300,
+  "round_interval_seconds": 15,
+  "round_timeout_seconds": 3,
+  "round_retry_interval_seconds": 5,
+  "ip_check_interval_seconds": 120,
+  "ip_check_timeout_seconds": 10,
   "ip_check_url": "https://api.ipify.org"
 }
 ```
@@ -38,10 +39,11 @@ Create a `config.json` in the project directory:
 |---|---|
 | `hosts` | Hostnames or IPs to probe (majority must succeed per round) |
 | `dns_servers` | Optional custom DNS resolvers; empty uses system default |
-| `interval_seconds` | Delay between successful rounds |
-| `round_timeout_seconds` | Per-round and per-host timeout |
+| `round_interval_seconds` | Delay between successful rounds |
+| `round_timeout_seconds` | Probe host timeout |
 | `retry_interval_seconds` | Delay after a failed round |
 | `ip_check_interval_seconds` | Public IP check interval; `0` disables |
+| `ip_check_timeout_seconds` | Public IP check timeout |
 | `ip_check_url` | HTTP endpoint that returns your public IP |
 
 ## Output
