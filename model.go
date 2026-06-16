@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -40,6 +41,7 @@ type Session struct {
 	logger       *HourlyLogger
 	httpClient   *http.Client
 	roundControl *RoundControl
+	DNSResolvers []DNSResolver
 }
 
 type ProbeOutcomeKind int
@@ -65,4 +67,9 @@ type RoundControl struct {
 	// Cache control
 	successIPs   map[string]string
 	usedCachedIP map[string]bool
+}
+
+type DNSResolver struct {
+	server   string
+	resolver *net.Resolver
 }

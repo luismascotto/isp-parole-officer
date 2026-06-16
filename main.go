@@ -79,6 +79,21 @@ func main() {
 		successIPs:   make(map[string]string, len(config.Hosts)),
 		usedCachedIP: make(map[string]bool, len(config.Hosts)),
 	}
+	resolvers := make([]DNSResolver, 0)
+	if len(config.DNSServers) == 0 {
+		resolvers = append(resolvers, DNSResolver{server: "local", resolver: &net.Resolver{
+			PreferGo: true,
+		}})
+	} else {
+		for _, server := range config.DNSServers {
+			resolvers = append(resolvers, DNSResolver{server: server, resolver: &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					return net.Dial(network, address)
+				},
+			}})
+		}
+	}
 
 	s := &Session{
 		sessionID: sessionID,
@@ -89,6 +104,7 @@ func main() {
 			Timeout: config.RoundTimeout,
 		},
 		roundControl: roundControl,
+		DNSResolvers: resolvers,
 	}
 
 	s.logger.LogLine("[CONFIG]\n" + formatConfig(config))
@@ -288,7 +304,7 @@ func (s *Session) probeHost(ctx context.Context, host string, useCache bool) (ti
 		if !usedCachedIP && net.ParseIP(target) != nil {
 			return 0, "", false, err
 		}
-		resolved, resolveErr := resolve(ctx, host, s.config.DNSServers)
+		resolved, resolveErr := s.resolve(ctx, host)
 		if resolveErr != nil {
 			return 0, "", false, resolveErr
 		}
