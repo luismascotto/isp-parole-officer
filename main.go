@@ -28,6 +28,7 @@ const (
 	resultFileExtension  = ".txt"
 	defaultIPCheckURL    = "https://api.ipify.org"
 	maxIPCheckResponse   = 64
+	preflightTimeout     = 10 * time.Second
 )
 
 func main() {
@@ -90,12 +91,14 @@ func main() {
 		roundControl: roundControl,
 	}
 
+	s.logger.LogLine("[CONFIG]\n" + formatConfig(config))
+
 	if err := s.preflight(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n%s\n", err, "Review and adjust config.json, then run again.")
 		os.Exit(1)
 	}
 
-	s.logger.LogLine("[START]\n" + formatConfig(config))
+	s.logger.LogLine("[START]")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -110,11 +113,9 @@ func main() {
 	monitorDone := make(chan struct{})
 	go func() {
 		defer close(monitorDone)
-		if !sleepOrStop(ctx, config.RoundInterval) {
-			return
-		}
+		roundInterval := config.RoundInterval
 		for {
-			if ctx.Err() != nil {
+			if !sleepOrStop(ctx, roundInterval) {
 				return
 			}
 			outcome := s.runRound(ctx)
@@ -123,9 +124,7 @@ func main() {
 			}
 			s.applyCacheAfterRound(outcome)
 			s.logger.LogLine(outcome.detail)
-			if !sleepOrStop(ctx, outcome.waitNext) {
-				return
-			}
+			roundInterval = outcome.waitNext
 		}
 	}()
 
@@ -159,12 +158,16 @@ func WaitAny(wgDoneCh chan struct{}, timeout time.Duration) {
 }
 
 func (s *Session) preflight() error {
+	ctx, cancel := context.WithTimeout(context.Background(), preflightTimeout)
+	defer cancel()
 	for _, host := range s.config.Hosts {
-		ctx, cancel := context.WithTimeout(context.Background(), s.config.RoundTimeout)
-		defer cancel()
-		_, _, _, err := s.probeHost(ctx, host, false)
-		if err != nil {
-			return fmt.Errorf("preflight failed for %s: %w", host, err)
+		if _, _, _, err := s.probeHost(ctx, host, false); err != nil {
+			return fmt.Errorf("round preflight failed for %s: %w", host, err)
+		}
+	}
+	if s.config.IPCheckInterval > 0 {
+		if err := s.checkIP(ctx, nil); err != nil {
+			return fmt.Errorf("ip preflight failed: %w", err)
 		}
 	}
 	return nil
