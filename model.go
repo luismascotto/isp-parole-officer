@@ -33,12 +33,13 @@ type HourlyLogger struct {
 }
 
 type Session struct {
-	sessionID  string
-	config     Config
-	caches     map[string]*HostCache
-	cacheMu    sync.Mutex
-	logger     *HourlyLogger
-	httpClient *http.Client
+	sessionID    string
+	config       Config
+	caches       map[string]*HostCache
+	cacheMu      sync.Mutex
+	logger       *HourlyLogger
+	httpClient   *http.Client
+	roundControl *RoundControl
 }
 
 type ProbeOutcomeKind int
@@ -50,17 +51,18 @@ const (
 )
 
 type ProbeOutcome struct {
-	kind         ProbeOutcomeKind
-	err          error
-	latency      map[string]time.Duration
-	successIPs   map[string]string
-	usedCachedIP map[string]bool
-	avgMs        int64
-	detail       string
-	waitNext     time.Duration
+	kind     ProbeOutcomeKind
+	err      error
+	avgMs    int64
+	detail   string
+	waitNext time.Duration
 }
 
-type HostLatency struct {
-	host    string
-	latency time.Duration
+type RoundControl struct {
+	minRequired int
+	latencies   []time.Duration
+	strbResult  strings.Builder
+	// Cache control
+	successIPs   map[string]string
+	usedCachedIP map[string]bool
 }

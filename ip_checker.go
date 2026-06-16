@@ -1,0 +1,80 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+)
+
+func (s *Session) runIPChecker(ctx context.Context) {
+	var lastIP string
+	checkIP := func() {
+		if ctx.Err() != nil {
+			return
+		}
+		checkCtx, cancel := context.WithTimeout(ctx, s.config.IPCheckTimeout)
+		defer cancel()
+
+		ip, err := s.fetchPublicIP(checkCtx, s.config.IPCheckURL)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			s.logger.LogLine("[IP] ERROR " + err.Error())
+			return
+		}
+
+		if lastIP != "" && ip != lastIP {
+			s.logger.LogLine("[IP] changed " + lastIP + " -> " + ip)
+		} else {
+			s.logger.LogLine("[IP] " + ip)
+		}
+		lastIP = ip
+	}
+
+	checkIP()
+
+	ticker := time.NewTicker(s.config.IPCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			checkIP()
+		}
+	}
+}
+
+func (s *Session) fetchPublicIP(ctx context.Context, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("service returned HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxIPCheckResponse))
+	if err != nil {
+		return "", err
+	}
+
+	ip := strings.TrimSpace(string(body))
+	if parsed := net.ParseIP(ip); parsed == nil {
+		return "", fmt.Errorf("invalid IP in response: %q", ip)
+	}
+	return ip, nil
+}
