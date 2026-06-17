@@ -175,15 +175,14 @@ func describeError(err error) string {
 		return "Timeout"
 	}
 	msg := err.Error()
-	lower := strings.ToLower(msg)
 	switch {
-	case strings.Contains(lower, "resolve"):
+	case strings.Contains(msg, "resolve"):
 		return msg
-	case strings.Contains(lower, "timeout"), strings.Contains(lower, "i/o timeout"):
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "i/o timeout"):
 		return "Timeout"
-	case strings.Contains(lower, "connection refused"):
+	case strings.Contains(msg, "connection refused"):
 		return "Connection refused"
-	case strings.Contains(lower, "no such host"):
+	case strings.Contains(msg, "no such host"):
 		return "Couldn't resolve name"
 	default:
 		return msg
