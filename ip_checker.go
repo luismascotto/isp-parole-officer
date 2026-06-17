@@ -12,31 +12,6 @@ import (
 
 func (s *Session) runIPChecker(ctx context.Context) {
 	var lastIP string
-	// checkIP := func() {
-	// 	if ctx.Err() != nil {
-	// 		return
-	// 	}
-	// 	checkCtx, cancel := context.WithTimeout(ctx, s.config.IPCheckTimeout)
-	// 	defer cancel()
-
-	// 	ip, err := s.fetchPublicIP(checkCtx, s.config.IPCheckURL)
-	// 	if err != nil {
-	// 		if ctx.Err() != nil {
-	// 			return
-	// 		}
-	// 		s.logger.LogLine("[IP] ERROR " + err.Error())
-	// 		return
-	// 	}
-
-	// 	if lastIP != "" && ip != lastIP {
-	// 		s.logger.LogLine("[IP] changed " + lastIP + " -> " + ip)
-	// 	} else {
-	// 		s.logger.LogLine("[IP] " + ip)
-	// 	}
-	// 	lastIP = ip
-	// }
-
-	// checkIP()
 
 	for {
 		select {

@@ -53,11 +53,11 @@ const (
 )
 
 type ProbeOutcome struct {
-	kind     ProbeOutcomeKind
-	err      error
-	avgMs    int64
-	detail   string
-	waitNext time.Duration
+	kind   ProbeOutcomeKind
+	err    error
+	avgMs  int64
+	detail string
+	//waitNext time.Duration
 }
 
 type RoundControl struct {

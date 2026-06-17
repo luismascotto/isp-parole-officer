@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -48,7 +50,7 @@ func validateConfig(cfg Config) error {
 	return nil
 }
 
-func formatConfig(cfg Config) string {
+func (cfg Config) formatConfig() string {
 	var strb strings.Builder
 	strb.WriteString("\t[HOSTS] ")
 	strb.WriteString(strings.Join(cfg.Hosts, "  "))
@@ -79,4 +81,34 @@ func formatConfig(cfg Config) string {
 		strb.WriteString("off")
 	}
 	return strb.String()
+}
+
+func (cfg Config) newDNSResolvers() []DNSResolver {
+	resolvers := make([]DNSResolver, 0)
+	if len(cfg.DNSServers) == 0 {
+		resolvers = append(resolvers, DNSResolver{server: "local", resolver: &net.Resolver{
+			PreferGo: true,
+		}})
+	} else {
+		for _, server := range cfg.DNSServers {
+			resolvers = append(resolvers, DNSResolver{server: server, resolver: &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					return net.Dial(network, address)
+				},
+			}})
+		}
+	}
+	return resolvers
+}
+
+func (cfg Config) newRoundControl() *RoundControl {
+	roundControl := &RoundControl{
+		latencies: make([]time.Duration, 0, len(cfg.Hosts)),
+		//strbResult:   &strings.Builder{},
+		minRequired:  max(1, (len(cfg.Hosts)+1)/2),
+		successIPs:   make(map[string]string, len(cfg.Hosts)),
+		usedCachedIP: make(map[string]bool, len(cfg.Hosts)),
+	}
+	return roundControl
 }
