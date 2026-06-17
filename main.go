@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -32,9 +30,11 @@ func main() {
 	// go tool pprof http://localhost:6060/debug/pprof/heap to view heap allocations
 	// go tool pprof http://localhost:6060/debug/pprof/profile to view CPU profile
 	// go tool pprof -http=:8080 http://localhost:6060/debug/pprof/* web interface
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
+	// curl -s http://localhost:6060/debug/pprof/heap > base.prof
+	// go tool pprof -diff base.prof main.prof
+	// go func() {
+	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
+	// }()
 
 	config, err := loadConfig("config.json")
 	if err != nil {
