@@ -69,15 +69,13 @@ func main() {
 	}
 
 	s := &Session{
-		sessionID: sessionID,
-		config:    config,
-		caches:    make(map[string]*HostCache, len(config.Hosts)),
-		logger:    logger,
-		httpClient: &http.Client{
-			Timeout: config.RoundTimeout,
-		},
+		sessionID:    sessionID,
+		config:       config,
+		caches:       make(map[string]*HostCache, len(config.Hosts)),
+		logger:       logger,
 		roundControl: config.newRoundControl(),
 		DNSResolvers: config.newDNSResolvers(),
+		IPChecker:    config.newIPChecker(),
 	}
 
 	s.logger.LogLine("[CONFIG]\n" + config.formatConfig())

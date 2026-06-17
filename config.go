@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -111,4 +113,24 @@ func (cfg Config) newRoundControl() *RoundControl {
 		usedCachedIP: make(map[string]bool, len(cfg.Hosts)),
 	}
 	return roundControl
+}
+
+func (cfg Config) newIPChecker() IPChecker {
+	if cfg.IPCheckURL == "" {
+		return IPChecker{}
+	}
+	u, err := url.Parse(cfg.IPCheckURL)
+	if err != nil {
+		return IPChecker{}
+	}
+	return IPChecker{
+		httpClient: &http.Client{
+			Timeout: cfg.IPCheckTimeout,
+		},
+		req: &http.Request{
+			Method: http.MethodGet,
+			URL:    u,
+		},
+		bodyResp: make([]byte, maxIPCheckResponse),
+	}
 }

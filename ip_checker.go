@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -29,7 +28,7 @@ func (s *Session) checkIP(ctx context.Context, lastIP *string) error {
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, s.config.IPCheckTimeout)
 	defer cancel()
-	ip, err := s.fetchPublicIP(checkCtx, s.config.IPCheckURL)
+	ip, err := s.fetchPublicIP(checkCtx)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -53,13 +52,10 @@ func (s *Session) checkIP(ctx context.Context, lastIP *string) error {
 	return nil
 }
 
-func (s *Session) fetchPublicIP(ctx context.Context, url string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return "", err
-	}
+func (s *Session) fetchPublicIP(ctx context.Context) (string, error) {
+	req := s.IPChecker.req.WithContext(ctx)
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.IPChecker.httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -68,13 +64,15 @@ func (s *Session) fetchPublicIP(ctx context.Context, url string) (string, error)
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("service returned HTTP %d", resp.StatusCode)
 	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxIPCheckResponse))
+	if resp.ContentLength > maxIPCheckResponse {
+		return "", fmt.Errorf("response is too large")
+	}
+	_, err = io.ReadAtLeast(resp.Body, s.IPChecker.bodyResp, int(resp.ContentLength))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	ip := strings.TrimSpace(string(body))
+	ip := string(s.IPChecker.bodyResp[:resp.ContentLength])
 	if parsed := net.ParseIP(ip); parsed == nil {
 		return "", fmt.Errorf("invalid IP in response: %q", ip)
 	}

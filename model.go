@@ -39,9 +39,9 @@ type Session struct {
 	caches       map[string]*HostCache
 	cacheMu      sync.Mutex
 	logger       *HourlyLogger
-	httpClient   *http.Client
 	roundControl *RoundControl
 	DNSResolvers []DNSResolver
+	IPChecker    IPChecker
 }
 
 type ProbeOutcomeKind int
@@ -72,4 +72,10 @@ type RoundControl struct {
 type DNSResolver struct {
 	server   string
 	resolver *net.Resolver
+}
+
+type IPChecker struct {
+	httpClient *http.Client
+	req        *http.Request
+	bodyResp   []byte
 }
