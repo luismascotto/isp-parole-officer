@@ -5,17 +5,21 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
-func newHourlyLogger(sessionID string) (*HourlyLogger, error) {
+func newHourlyLogger(sessionID string, useTUI bool) (*HourlyLogger, error) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
 	l := &HourlyLogger{
-		outputDir: filepath.Join(wd, resultsDirName, sessionID),
-		currHour:  now.Hour(),
+		outputDir:  filepath.Join(wd, resultsDirName, sessionID),
+		currHour:   now.Hour(),
+		useTUI:     useTUI,
+		tuiProgram: tea.NewProgram(newModel()),
 	}
 	l.strb.Grow(128)
 
@@ -24,6 +28,7 @@ func newHourlyLogger(sessionID string) (*HourlyLogger, error) {
 		fmt.Fprintln(os.Stderr, "log directory creation error:", err)
 	}
 	l.prepareResultsFile(now)
+
 	return l, nil
 }
 
@@ -53,7 +58,8 @@ func (l *HourlyLogger) LogLine(line string) {
 	if l.currHour != moment.Hour() {
 		l.currHour = moment.Hour()
 
-		os.Stdout.WriteString("\x1bc")
+		l.prepareDisplay()
+
 		l.prepareResultsFile(moment)
 	}
 
@@ -64,10 +70,28 @@ func (l *HourlyLogger) LogLine(line string) {
 
 	timestampedLine := l.strb.String()
 
-	fmt.Println(timestampedLine)
+	l.writeToDisplay(timestampedLine)
 
+	l.writeToFile(timestampedLine)
+}
+
+func (l *HourlyLogger) prepareDisplay() {
+	if !l.useTUI {
+		os.Stdout.WriteString("\x1bc")
+	}
+}
+
+func (l *HourlyLogger) writeToDisplay(line string) {
+	if !l.useTUI {
+		fmt.Println(line)
+	} else {
+		l.tuiProgram.Send(resultMsg{line: line})
+	}
+}
+
+func (l *HourlyLogger) writeToFile(line string) {
 	if l.file != nil {
-		if w, err := fmt.Fprintln(l.file, timestampedLine); err != nil {
+		if w, err := fmt.Fprintln(l.file, line); err != nil {
 			fmt.Fprintln(os.Stderr, "log file write error:", err, "\nBytes written:", w)
 		}
 	}

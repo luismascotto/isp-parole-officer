@@ -62,7 +62,7 @@ func main() {
 	}
 	sessionID := uuidV7.String()
 
-	logger, err := newHourlyLogger(sessionID)
+	logger, err := newHourlyLogger(sessionID, config.UseTUI)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "log file error: %v\n", err)
 		os.Exit(1)
@@ -78,7 +78,23 @@ func main() {
 		IPChecker:    config.newIPChecker(),
 	}
 
-	s.logger.LogLine("[CONFIG]\n" + config.formatConfig())
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		s.RunApplication()
+	})
+	if !s.config.UseTUI {
+		wg.Wait()
+		return
+	}
+	if _, err := s.logger.tuiProgram.Run(); err != nil {
+		fmt.Println("Error running tui program:", err)
+		os.Exit(1)
+	}
+
+}
+
+func (s *Session) RunApplication() {
+	s.logger.LogLine("[CONFIG]\n" + s.config.formatConfig())
 
 	if err := s.preflight(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n%s\n", err, "Review and adjust config.json, then run again.")
@@ -91,7 +107,7 @@ func main() {
 	defer stop()
 
 	var IPCheckWg sync.WaitGroup
-	if config.IPCheckInterval > 0 {
+	if s.config.IPCheckInterval > 0 {
 		IPCheckWg.Go(func() {
 			s.runIPChecker(ctx)
 		})
@@ -100,12 +116,14 @@ func main() {
 	doneCh := make(chan struct{})
 	go func() {
 		defer close(doneCh)
-		waitInterval := config.RoundInterval
+		waitInterval := s.config.RoundInterval
 		for {
 			if !SleepOrStop(ctx, waitInterval) {
 				return
 			}
+			s.setRunning(true)
 			outcome := s.runRound(ctx)
+			s.setRunning(false)
 			if ctx.Err() != nil {
 				return
 			}
@@ -113,9 +131,9 @@ func main() {
 			case ProbeOutcomeKindStopped:
 				return
 			case ProbeOutcomeKindError:
-				waitInterval = config.RoundRetryInterval
+				waitInterval = s.config.RoundRetryInterval
 			default:
-				waitInterval = config.RoundInterval
+				waitInterval = s.config.RoundInterval
 			}
 			s.logger.LogLine(outcome.detail)
 		}
@@ -124,7 +142,7 @@ func main() {
 	<-ctx.Done()
 	stop()
 
-	WaitDoneCh(doneCh, config.RoundTimeout+2*time.Second)
+	WaitDoneCh(doneCh, s.config.RoundTimeout+2*time.Second)
 
 	WaitWgUpTo(&IPCheckWg, 2*time.Second)
 
@@ -177,4 +195,11 @@ func (s *Session) preflight() error {
 		}
 	}
 	return nil
+}
+
+func (s *Session) setRunning(running bool) {
+	if !s.logger.useTUI {
+		return
+	}
+	s.logger.tuiProgram.Send(runningMsg{running: running})
 }

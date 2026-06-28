@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 type Config struct {
@@ -18,6 +20,7 @@ type Config struct {
 	IPCheckInterval    time.Duration `json:"ip_check_interval_seconds"`
 	IPCheckTimeout     time.Duration `json:"ip_check_timeout_seconds"`
 	IPCheckURL         string        `json:"ip_check_url"`
+	UseTUI             bool          `json:"use_tui"`
 }
 
 type HostCache struct {
@@ -26,11 +29,13 @@ type HostCache struct {
 }
 
 type HourlyLogger struct {
-	outputDir string
-	mu        sync.Mutex
-	file      *os.File
-	currHour  int
-	strb      strings.Builder
+	outputDir  string
+	mu         sync.Mutex
+	file       *os.File
+	currHour   int
+	strb       strings.Builder
+	useTUI     bool
+	tuiProgram *tea.Program
 }
 
 type Session struct {

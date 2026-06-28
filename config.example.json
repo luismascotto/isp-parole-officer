@@ -13,5 +13,6 @@
   "round_retry_interval_seconds": 5,
   "ip_check_interval_seconds": 120,
   "ip_check_timeout_seconds": 10,
-  "ip_check_url": "https://api.ipify.org"
+  "ip_check_url": "https://api.ipify.org",
+  "use_tui": true
 }
