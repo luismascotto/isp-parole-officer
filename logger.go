@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func newHourlyLogger(sessionID string, useTUI bool) (*HourlyLogger, error) {
+func newHourlyLogger(ctx context.Context, sessionID string, useTUI bool) (*HourlyLogger, error) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -19,7 +20,7 @@ func newHourlyLogger(sessionID string, useTUI bool) (*HourlyLogger, error) {
 		outputDir:  filepath.Join(wd, resultsDirName, sessionID),
 		currHour:   now.Hour(),
 		useTUI:     useTUI,
-		tuiProgram: tea.NewProgram(newModel()),
+		tuiProgram: tea.NewProgram(newModel(), tea.WithContext(ctx)),
 	}
 	l.strb.Grow(128)
 
@@ -49,17 +50,13 @@ func (l *HourlyLogger) prepareResultsFile(moment time.Time) {
 
 func (l *HourlyLogger) LogLine(line string) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 
 	moment := time.Now()
-
 	// Clear terminal and prepare new results file if hour has changed.
 	//  In long running sessions, some terminals can crash due buffer overflow.
 	if l.currHour != moment.Hour() {
 		l.currHour = moment.Hour()
-
 		l.prepareDisplay()
-
 		l.prepareResultsFile(moment)
 	}
 
@@ -70,8 +67,9 @@ func (l *HourlyLogger) LogLine(line string) {
 
 	timestampedLine := l.strb.String()
 
-	l.writeToDisplay(timestampedLine)
+	l.mu.Unlock()
 
+	l.writeToDisplay(timestampedLine)
 	l.writeToFile(timestampedLine)
 }
 

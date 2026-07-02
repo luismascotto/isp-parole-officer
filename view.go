@@ -4,11 +4,7 @@ package main
 // from outside the program using Program.Send(Msg).
 
 import (
-	"fmt"
-	"math/rand"
-	"os"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
@@ -16,25 +12,18 @@ import (
 )
 
 var (
-	spinnerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Margin(1, 0)
-	dotStyle      = helpStyle.UnsetMargins()
-	durationStyle = dotStyle
-	appStyle      = lipgloss.NewStyle().Margin(1, 2, 0, 2)
-	messageStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+	appStyle            = lipgloss.NewStyle().Margin(1, 2, 0, 2)
+	spinnerRunningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("154"))
+	spinnerWaitingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	helpStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Width(64).Margin(1, 0).Align(lipgloss.Center)
+	dotStyle            = helpStyle.UnsetMargins()
+	messageStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("194"))
+	messageAltStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("195"))
+	messageErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("197"))
 )
 
 type resultMsg struct {
 	line string
-}
-
-func (r resultMsg) String() string {
-	// if r.duration == 0 {
-	// 	return dotStyle.Render(strings.Repeat(".", 30))
-	// }
-	// return fmt.Sprintf("🍔 Ate %s %s", r.food,
-	// 	durationStyle.Render(r.duration.String()))
-	return messageStyle.Render(r.line)
 }
 
 type runningMsg struct {
@@ -52,15 +41,14 @@ type model struct {
 const numLastResults = 20
 
 func newModel() model {
-
 	return model{
 		spinnerRunning: spinner.New(
-			spinner.WithStyle(spinnerStyle),
+			spinner.WithStyle(spinnerRunningStyle),
 			spinner.WithSpinner(spinner.Jump),
 		),
 		spinnerWaiting: spinner.New(
-			spinner.WithStyle(spinnerStyle),
-			spinner.WithSpinner(spinner.Monkey),
+			spinner.WithStyle(spinnerWaitingStyle),
+			spinner.WithSpinner(spinner.Meter),
 		),
 		results: make([]resultMsg, numLastResults),
 	}
@@ -76,7 +64,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "esc", "ctrl+c":
+		case "q", "esc":
+			//cancelGlobalContext()
 			m.quitting = true
 			return m, tea.Quit
 		}
@@ -107,57 +96,38 @@ func (m model) View() tea.View {
 	var b strings.Builder
 
 	if m.quitting {
-		b.WriteString("SIUUUUUU!")
-		b.WriteString(dotStyle.Render(strings.Repeat("\n", numLastResults+3)))
+		b.WriteString(m.spinnerWaiting.View())
+		b.WriteString(spinnerWaitingStyle.Render(" Stopping..."))
+		b.WriteString(dotStyle.Render(strings.Repeat("\n", numLastResults/2)))
 	} else {
 		if m.running {
 			b.WriteString(m.spinnerRunning.View())
-			b.WriteString(" Running...")
+			b.WriteString(spinnerRunningStyle.Render(" Running..."))
 		} else {
 			b.WriteString(m.spinnerWaiting.View())
-			b.WriteString(" Waiting...")
+			b.WriteString(spinnerWaitingStyle.Render(" Waiting..."))
 		}
 
 		b.WriteString("\n\n")
 
-		for _, res := range m.results {
-			b.WriteString(messageStyle.Render(res.line))
+		for i, res := range m.results {
+			if len(res.line) == 0 {
+				b.WriteString(messageStyleFor(i).Render(strings.Repeat(" ", 64)))
+			} else {
+				b.WriteString(messageStyleFor(i).Render(res.line))
+			}
 			b.WriteString("\n")
 		}
 
-		b.WriteString(helpStyle.Render("Ctrl+C, ESC, or Q to exit..."))
+		b.WriteString(helpStyle.Render("ESC, or Q to exit..."))
 	}
 
 	return tea.NewView(appStyle.Render(b.String()))
 }
 
-func main_view() {
-	p := tea.NewProgram(newModel())
-
-	// Simulate activity
-	go func() {
-		for {
-			pause := time.Duration(rand.Int63n(899)+100) * time.Millisecond // nolint:gosec
-			time.Sleep(pause)
-
-			// Send the Bubble Tea program a message from outside the
-			// tea.Program. This will block until it is ready to receive
-			// messages.
-			p.Send(resultMsg{line: randomFood()})
-		}
-	}()
-
-	if _, err := p.Run(); err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
+func messageStyleFor(line int) lipgloss.Style {
+	if line%2 == 0 {
+		return messageStyle
 	}
-}
-
-func randomFood() string {
-	food := []string{
-		"an apple", "a pear", "a gherkin", "a party gherkin",
-		"a kohlrabi", "some spaghetti", "tacos", "a currywurst", "some curry",
-		"a sandwich", "some peanut butter", "some cashews", "some ramen",
-	}
-	return food[rand.Intn(len(food))] // nolint:gosec
+	return messageAltStyle
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -62,7 +63,10 @@ func main() {
 	}
 	sessionID := uuidV7.String()
 
-	logger, err := newHourlyLogger(sessionID, config.UseTUI)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	logger, err := newHourlyLogger(ctx, sessionID, config.UseTUI)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "log file error: %v\n", err)
 		os.Exit(1)
@@ -78,23 +82,25 @@ func main() {
 		IPChecker:    config.newIPChecker(),
 	}
 
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		s.RunApplication()
-	})
-	if !s.config.UseTUI {
-		wg.Wait()
-		return
-	}
-	if _, err := s.logger.tuiProgram.Run(); err != nil {
-		fmt.Println("Error running tui program:", err)
-		os.Exit(1)
-	}
+	var IPCheckWg sync.WaitGroup
+	doneCh := make(chan struct{})
+	go s.RunApplication(ctx, &IPCheckWg, doneCh)
 
+	if s.config.UseTUI {
+		_, _ = s.logger.tuiProgram.Run()
+	}
+	cancel()
+	WaitDoneCh(doneCh, s.config.RoundTimeout+2*time.Second)
+	WaitWgUpTo(&IPCheckWg, 2*time.Second)
 }
 
-func (s *Session) RunApplication() {
-	s.logger.LogLine("[CONFIG]\n" + s.config.formatConfig())
+func (s *Session) RunApplication(ctx context.Context, IPCheckWg *sync.WaitGroup, doneCh chan struct{}) {
+	s.setRunning(true)
+	s.logger.LogLine("[CONFIG]")
+	configs := strings.SplitSeq(s.config.formatConfig(), "\n")
+	for config := range configs {
+		s.logger.LogLine(config)
+	}
 
 	if err := s.preflight(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n%s\n", err, "Review and adjust config.json, then run again.")
@@ -103,27 +109,27 @@ func (s *Session) RunApplication() {
 
 	s.logger.LogLine("[START]")
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	// ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// defer stop()
 
-	var IPCheckWg sync.WaitGroup
+	//var IPCheckWg sync.WaitGroup
 	if s.config.IPCheckInterval > 0 {
 		IPCheckWg.Go(func() {
 			s.runIPChecker(ctx)
 		})
 	}
 
-	doneCh := make(chan struct{})
 	go func() {
 		defer close(doneCh)
 		waitInterval := s.config.RoundInterval
 		for {
+			s.setRunning(false)
 			if !SleepOrStop(ctx, waitInterval) {
 				return
 			}
 			s.setRunning(true)
 			outcome := s.runRound(ctx)
-			s.setRunning(false)
+
 			if ctx.Err() != nil {
 				return
 			}
@@ -140,11 +146,6 @@ func (s *Session) RunApplication() {
 	}()
 
 	<-ctx.Done()
-	stop()
-
-	WaitDoneCh(doneCh, s.config.RoundTimeout+2*time.Second)
-
-	WaitWgUpTo(&IPCheckWg, 2*time.Second)
 
 	s.logger.LogLine("[STOP]")
 }

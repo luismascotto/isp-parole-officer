@@ -54,16 +54,16 @@ func validateConfig(cfg Config) error {
 
 func (cfg Config) formatConfig() string {
 	var strb strings.Builder
-	strb.WriteString("\t[HOSTS] ")
+	strb.WriteString("[HOSTS] ")
 	strb.WriteString(strings.Join(cfg.Hosts, "  "))
-	strb.WriteString("\n\t[DNS] ")
+	strb.WriteString("\n[DNS] ")
 	if len(cfg.DNSServers) > 0 {
 		strb.WriteString(strings.Join(cfg.DNSServers, "  "))
 	} else {
 		strb.WriteString("system default")
 	}
 
-	strb.WriteString("\n\t[ROUND] interval ")
+	strb.WriteString("\n[ROUND] interval ")
 	strb.WriteString(strconv.Itoa(int(cfg.RoundInterval / time.Second)))
 	strb.WriteString("s, timeout ")
 	strb.WriteString(strconv.Itoa(int(cfg.RoundTimeout / time.Second)))
@@ -71,7 +71,7 @@ func (cfg Config) formatConfig() string {
 	strb.WriteString(strconv.Itoa(int(cfg.RoundRetryInterval / time.Second)))
 	strb.WriteString("s")
 
-	strb.WriteString("\n\t[IP CHECK] ")
+	strb.WriteString("\n[IP CHECK] ")
 	if cfg.IPCheckInterval > 0 {
 		strb.WriteString("interval ")
 		strb.WriteString(strconv.Itoa(int(cfg.IPCheckInterval / time.Second)))
