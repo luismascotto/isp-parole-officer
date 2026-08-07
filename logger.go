@@ -10,17 +10,30 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func newHourlyLogger(ctx context.Context, sessionID string, useTUI bool) (*HourlyLogger, error) {
+type FileLogOption int
+
+const (
+	FileLogOptionNone     FileLogOption = 0
+	FileLogOptionAll      FileLogOption = 1
+	FileLogOptionIP       FileLogOption = 2
+	FileLogOptionSuccess  FileLogOption = 4
+	FileLogOptionFailure  FileLogOption = 8
+	FileLogOptionIPChange FileLogOption = 16
+)
+
+func newHourlyLogger(ctx context.Context, sessionID string, useTUI bool, ttsFormat string) (*HourlyLogger, error) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
 	l := &HourlyLogger{
-		outputDir:  filepath.Join(wd, resultsDirName, sessionID),
-		currHour:   now.Hour(),
-		useTUI:     useTUI,
-		tuiProgram: tea.NewProgram(newModel(), tea.WithContext(ctx)),
+		outputDir:       filepath.Join(wd, resultsDirName, sessionID),
+		currHour:        now.Hour(),
+		useTUI:          useTUI,
+		tuiProgram:      tea.NewProgram(newModel(), tea.WithContext(ctx)),
+		FileLogOptions:  FileLogOptionIPChange | FileLogOptionFailure,
+		timestampFormat: ttsFormat,
 	}
 	l.strb.Grow(128)
 
@@ -61,7 +74,7 @@ func (l *HourlyLogger) LogLine(line string) {
 	}
 
 	l.strb.Reset()
-	l.strb.WriteString(moment.Format("2006-01-02 15:04:05"))
+	l.strb.WriteString(moment.Format(l.timestampFormat))
 	l.strb.WriteString(" ")
 	l.strb.WriteString(line)
 
@@ -92,5 +105,29 @@ func (l *HourlyLogger) writeToFile(line string) {
 		if w, err := fmt.Fprintln(l.file, line); err != nil {
 			fmt.Fprintln(os.Stderr, "log file write error:", err, "\nBytes written:", w)
 		}
+	}
+}
+
+func (l *HourlyLogger) LogLineIP(line string) {
+	if l.FileLogOptions&FileLogOptionIP != 0 {
+		l.LogLine(line)
+	}
+}
+
+func (l *HourlyLogger) LogLineSuccess(line string) {
+	if l.FileLogOptions&FileLogOptionSuccess != 0 {
+		l.LogLine(line)
+	}
+}
+
+func (l *HourlyLogger) LogLineFailure(line string) {
+	if l.FileLogOptions&FileLogOptionFailure != 0 {
+		l.LogLine(line)
+	}
+}
+
+func (l *HourlyLogger) LogLineIPChange(line string) {
+	if l.FileLogOptions&FileLogOptionIPChange != 0 {
+		l.LogLine(line)
 	}
 }

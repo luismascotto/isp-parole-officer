@@ -21,6 +21,7 @@ type Config struct {
 	IPCheckTimeout     time.Duration `json:"ip_check_timeout_seconds"`
 	IPCheckURL         string        `json:"ip_check_url"`
 	UseTUI             bool          `json:"use_tui"`
+	TimestampFormat    string        `json:"timestamp_format"`
 }
 
 type HostCache struct {
@@ -29,13 +30,15 @@ type HostCache struct {
 }
 
 type HourlyLogger struct {
-	outputDir  string
-	mu         sync.Mutex
-	file       *os.File
-	currHour   int
-	strb       strings.Builder
-	useTUI     bool
-	tuiProgram *tea.Program
+	outputDir       string
+	mu              sync.Mutex
+	file            *os.File
+	currHour        int
+	strb            strings.Builder
+	useTUI          bool
+	tuiProgram      *tea.Program
+	FileLogOptions  FileLogOption
+	timestampFormat string
 }
 
 type Session struct {

@@ -20,6 +20,7 @@ var (
 	messageStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("194"))
 	messageAltStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("195"))
 	messageErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("197"))
+	messageIPStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("198"))
 )
 
 type resultMsg struct {
@@ -112,9 +113,15 @@ func (m model) View() tea.View {
 
 		for i, res := range m.results {
 			if len(res.line) == 0 {
-				b.WriteString(messageStyleFor(i).Render(strings.Repeat(" ", 64)))
+				b.WriteString(messageStyle.Render(strings.Repeat(" ", 64)))
 			} else {
-				b.WriteString(messageStyleFor(i).Render(res.line))
+				if strings.Contains(res.line, "[IP]") {
+					b.WriteString(messageIPStyle.Render(res.line))
+				} else if strings.Contains(res.line, "[ERROR]") {
+					b.WriteString(messageErrorStyle.Render(res.line))
+				} else {
+					b.WriteString(messageStyleFor(i).Render(res.line))
+				}
 			}
 			b.WriteString("\n")
 		}

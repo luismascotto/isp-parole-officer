@@ -16,14 +16,15 @@ import (
 )
 
 const (
-	tcpProbePort         = "443"
-	maxConsecutiveIP     = 3
-	resultsDirName       = "Results"
-	resultFileNameFormat = "2006-01-02_15"
-	resultFileExtension  = ".txt"
-	defaultIPCheckURL    = "https://api.ipify.org"
-	maxIPCheckResponse   = 64
-	preflightTimeout     = 10 * time.Second
+	tcpProbePort           = "443"
+	maxConsecutiveIP       = 3
+	resultsDirName         = "Results"
+	resultFileNameFormat   = "2006-01-02_15"
+	defaultTimestampFormat = "2006-01-02 15:04:05"
+	resultFileExtension    = ".txt"
+	defaultIPCheckURL      = "https://api.ipify.org"
+	maxIPCheckResponse     = 64
+	preflightTimeout       = 10 * time.Second
 )
 
 func main() {
@@ -52,8 +53,11 @@ func main() {
 	config.RoundRetryInterval *= time.Second
 	config.IPCheckInterval *= time.Second
 	config.IPCheckTimeout *= time.Second
-	if config.IPCheckURL == "" {
+	if len(config.IPCheckURL) < 3 {
 		config.IPCheckURL = defaultIPCheckURL
+	}
+	if len(config.TimestampFormat) < 3 {
+		config.TimestampFormat = defaultTimestampFormat
 	}
 
 	uuidV7, err := uuid.NewV7()
@@ -66,7 +70,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	logger, err := newHourlyLogger(ctx, sessionID, config.UseTUI)
+	logger, err := newHourlyLogger(ctx, sessionID, config.UseTUI, config.TimestampFormat)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "log file error: %v\n", err)
 		os.Exit(1)
@@ -101,13 +105,18 @@ func (s *Session) RunApplication(ctx context.Context, IPCheckWg *sync.WaitGroup,
 	for config := range configs {
 		s.logger.LogLine(config)
 	}
-
-	if err := s.preflight(); err != nil {
+	var extIP string
+	if err := s.preflight(&extIP); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n%s\n", err, "Review and adjust config.json, then run again.")
 		os.Exit(1)
 	}
 
 	s.logger.LogLine("[START]")
+
+	//Only log first generic if IP logging is disabled
+	if (s.logger.FileLogOptions & FileLogOptionIP) == 0 {
+		s.logger.LogLine("[IP] read first time: " + extIP)
+	}
 
 	// ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// defer stop()
@@ -138,10 +147,11 @@ func (s *Session) RunApplication(ctx context.Context, IPCheckWg *sync.WaitGroup,
 				return
 			case ProbeOutcomeKindError:
 				waitInterval = s.config.RoundRetryInterval
-			default:
+				s.logger.LogLineFailure(outcome.detail)
+			case ProbeOutcomeKindSuccess:
 				waitInterval = s.config.RoundInterval
+				s.logger.LogLineSuccess(outcome.detail)
 			}
-			s.logger.LogLine(outcome.detail)
 		}
 	}()
 
@@ -182,7 +192,7 @@ func SleepOrStop(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-func (s *Session) preflight() error {
+func (s *Session) preflight(ipValue *string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), preflightTimeout)
 	defer cancel()
 	for _, host := range s.config.Hosts {
@@ -191,7 +201,7 @@ func (s *Session) preflight() error {
 		}
 	}
 	if s.config.IPCheckInterval > 0 {
-		if err := s.checkIP(ctx, nil); err != nil {
+		if err := s.checkIP(ctx, ipValue); err != nil {
 			return fmt.Errorf("ip preflight failed: %w", err)
 		}
 	}

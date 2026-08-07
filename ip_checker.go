@@ -33,7 +33,7 @@ func (s *Session) checkIP(ctx context.Context, lastIP *string) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		s.logger.LogLine("[IP] ERROR " + err.Error())
+		s.logger.LogLineFailure("[IP] ERROR " + err.Error())
 		return err
 	}
 
@@ -42,11 +42,11 @@ func (s *Session) checkIP(ctx context.Context, lastIP *string) error {
 		*lastIP = ip
 	}
 	if lastIP == nil || *lastIP == ip {
-		s.logger.LogLine("[IP] " + ip)
+		s.logger.LogLineIP("[IP] " + ip)
 		return nil
 	}
 
-	s.logger.LogLine("[IP] changed " + *lastIP + " -> " + ip)
+	s.logger.LogLineIPChange("[IP] changed " + *lastIP + " -> " + ip)
 	*lastIP = ip
 
 	return nil
