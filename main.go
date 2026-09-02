@@ -25,6 +25,7 @@ const (
 	defaultIPCheckURL      = "https://api.ipify.org"
 	maxIPCheckResponse     = 64
 	preflightTimeout       = 10 * time.Second
+	minRoundDuration       = 450 * time.Millisecond
 )
 
 func main() {
@@ -131,17 +132,24 @@ func (s *Session) RunApplication(ctx context.Context, IPCheckWg *sync.WaitGroup,
 	go func() {
 		defer close(doneCh)
 		waitInterval := s.config.RoundInterval
+		var stopWatch time.Time
+		var elapsed time.Duration
 		for {
 			s.setRunning(false)
 			if !SleepOrStop(ctx, waitInterval) {
 				return
 			}
 			s.setRunning(true)
+			stopWatch = time.Now()
+
 			outcome := s.runRound(ctx)
 
 			if ctx.Err() != nil {
 				return
 			}
+
+			elapsed = time.Since(stopWatch)
+
 			switch outcome.kind {
 			case ProbeOutcomeKindStopped:
 				return
@@ -152,6 +160,12 @@ func (s *Session) RunApplication(ctx context.Context, IPCheckWg *sync.WaitGroup,
 				waitInterval = s.config.RoundInterval
 				s.logger.LogLineSuccess(outcome.detail)
 			}
+
+			//Give time to "Running" to be perceived by the user. Its too fkn fast
+			if elapsed < minRoundDuration {
+				time.Sleep(minRoundDuration - elapsed)
+			}
+
 		}
 	}()
 

@@ -37,6 +37,7 @@ type model struct {
 	results        []resultMsg
 	quitting       bool
 	running        bool
+	toWait         bool
 }
 
 const numLastResults = 20
@@ -72,7 +73,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case runningMsg:
+		// Detect from running to waiting
+		m.toWait = m.running && !msg.running
 		m.running = msg.running
+
 		return m, nil
 	case resultMsg:
 		m.results = append(m.results[1:], msg)
@@ -95,7 +99,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() tea.View {
 	var b strings.Builder
-
 	if m.quitting {
 		b.WriteString(m.spinnerWaiting.View())
 		b.WriteString(spinnerWaitingStyle.Render(" Stopping..."))

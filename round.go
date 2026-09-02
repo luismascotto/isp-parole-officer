@@ -200,7 +200,9 @@ func (r *RoundControl) AddHostResult(host string, latency time.Duration, ip stri
 	if !usedCachedIP {
 		r.strbResult.WriteString("*")
 	}
-	r.strbResult.WriteString(":" + strconv.FormatInt(latency.Milliseconds(), 10) + "ms")
+	r.strbResult.WriteString(":")
+	r.strbResult.WriteString(strconv.FormatInt(latency.Milliseconds(), 10))
+	r.strbResult.WriteString("ms")
 }
 
 func (r *RoundControl) Clear() {
