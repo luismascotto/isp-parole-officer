@@ -41,7 +41,7 @@ Create a `config.json` in the project directory:
 | `dns_servers` | Optional custom DNS resolvers; empty uses system default |
 | `round_interval_seconds` | Delay between successful rounds |
 | `round_timeout_seconds` | Probe host timeout |
-| `retry_interval_seconds` | Delay after a failed round |
+| `round_retry_interval_seconds` | Delay after a failed round |
 | `ip_check_interval_seconds` | Public IP check interval; `0` disables |
 | `ip_check_timeout_seconds` | Public IP check timeout |
 | `ip_check_url` | HTTP endpoint that returns your public IP |
