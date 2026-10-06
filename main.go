@@ -161,7 +161,7 @@ func (s *Session) RunApplication(ctx context.Context, IPCheckWg *sync.WaitGroup,
 				s.logger.LogLineSuccess(outcome.detail)
 			}
 
-			//Give time to "Running" to be perceived by the user. Its too fkn fast
+			//Give time to "Running" to be perceived by the user. It's too fast otherwise.
 			if elapsed < minRoundDuration {
 				time.Sleep(minRoundDuration - elapsed)
 			}
